@@ -91,7 +91,7 @@ export default function CareerPilotApp() {
           <div className="welcome-row"><div><p className="eyebrow">THURSDAY, JUNE 12, 2025</p><h1>Your next chapter, <em>mapped.</em></h1><p className="lede">A clearer path from where you are to where you want to go.</p></div><button className="primary-button" onClick={() => void generatePlan()} disabled={isGenerating}>{isGenerating ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{isGenerating ? "Thinking..." : "Refresh my plan"}</button></div>
           {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => void generatePlan()}>Retry <ArrowUpRight size={14} /></button></div>}
           {notice && !error && <div className="notice-banner" role="status"><Sparkles size={14} /><span>{notice}</span><button aria-label="Dismiss notice" onClick={() => setNotice("")}><X size={14} /></button></div>}
-          {activeTab === "overview" && <Overview plan={plan} setActiveTab={navigate} setSelectedPath={setSelectedPath} />}
+          {activeTab === "overview" && <Overview plan={plan} setActiveTab={navigate} />}
           {activeTab === "paths" && <Paths plan={plan} setSelectedPath={setSelectedPath} />}
           {activeTab === "roadmap" && <Roadmap plan={plan} completedMilestones={completedMilestones} onToggle={toggleMilestone} />}
           {activeTab === "projects" && <Projects plan={plan} />}
@@ -106,7 +106,7 @@ export default function CareerPilotApp() {
 
 function PanelHeading({ label, title, action, onClick }: { label: string; title: string; action?: string; onClick?: () => void }) { return <div className="panel-heading"><div><p className="eyebrow">{label}</p><h3>{title}</h3></div>{action && <button className="small-action" onClick={onClick}>{action} <ArrowUpRight size={14} /></button>}</div>; }
 
-function Overview({ plan, setActiveTab, setSelectedPath }: { plan: CareerPlan; setActiveTab: (tab: Tab) => void; setSelectedPath: (path: CareerPath) => void }) {
+function Overview({ plan, setActiveTab }: { plan: CareerPlan; setActiveTab: (tab: Tab) => void }) {
   const topPath = plan.paths[0];
   return <div className="dashboard-grid"><section className="hero-card"><div className="hero-card-copy"><div className="section-kicker"><span className="sparkle-badge"><Sparkles size={15} /></span> CAREERPILOT INSIGHT</div><h2>You&apos;re closer than<br /><span>you think.</span></h2><p>{topPath.explanation} Your next move is to make that story visible.</p><button className="text-button" onClick={() => setActiveTab("paths")}>Explore your top matches <ArrowUpRight size={16} /></button></div><div className="orbit-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Sparkles size={21} /></div><span className="orbit-label label-one">curiosity</span><span className="orbit-label label-two">strategy</span><span className="orbit-label label-three">empathy</span></div></section><section className="stat-row"><Stat icon={<Gauge size={18} />} tone="coral-bg" label="PROFILE STRENGTH" value={`${plan.profileStrength}`} suffix="/100" note="Top 18% of explorers" /><Stat icon={<Target size={18} />} tone="mint-bg" label="TOP CAREER MATCH" value={`${plan.topMatch}`} suffix="%" note={topPath.title} /><Stat icon={<GraduationCap size={18} />} tone="gold-bg" label="ROADMAP PROGRESS" value={`${plan.roadmapProgress}`} suffix="%" note="3 milestones this month" /></section><section className="panel skills-panel"><PanelHeading label="SKILL GAP ANALYSIS" title="Your edge, at a glance" action="See full analysis" onClick={() => setActiveTab("paths")} /><div className="skill-list">{plan.skills.map((skill) => <div className="skill-line" key={skill.name}><div className="skill-name"><span>{skill.name}</span><b>{skill.current}% <small>/ {skill.target}%</small></b></div><div className="progress-track"><i className={skill.tone} style={{ width: `${skill.current}%` }} /></div><div className="skill-meta"><span className={`priority ${skill.priority.toLowerCase()}`}>{skill.priority} priority</span><span>{Math.max(skill.target - skill.current, 0)} point gap</span></div></div>)}</div></section></div>; }
 
@@ -123,6 +123,8 @@ function Resume({ profile }: { plan: CareerPlan; profile: Profile }) {
   const [analysis, setAnalysis] = useState<ResumeAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [showInput, setShowInput] = useState(true);
 
   async function runAnalysis() {
     if (resumeText.trim().length < 80) {
@@ -131,6 +133,7 @@ function Resume({ profile }: { plan: CareerPlan; profile: Profile }) {
     }
     setIsAnalyzing(true);
     setError("");
+    setNotice("");
     try {
       const response = await fetch("/api/resume", {
         method: "POST",
@@ -143,6 +146,8 @@ function Resume({ profile }: { plan: CareerPlan; profile: Profile }) {
       }
       const result = (await response.json()) as { analysis: ResumeAnalysis; notice?: string };
       setAnalysis(result.analysis);
+      if (result.notice) setNotice(result.notice);
+      setShowInput(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "We couldn't analyze your resume.");
     } finally {
@@ -158,56 +163,111 @@ function Resume({ profile }: { plan: CareerPlan; profile: Profile }) {
           <h2>Make your experience impossible to miss.</h2>
           <p>Paste your resume to get feedback grounded in your actual experience.</p>
         </div>
-        <button className="primary-button" disabled={isAnalyzing || resumeText.trim().length < 80} onClick={() => void runAnalysis()}>
-          {isAnalyzing ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-          {isAnalyzing ? "Analyzing..." : analysis ? "Re-analyze resume" : "Analyze resume"}
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          {analysis && (
+            <button className="outline-button" onClick={() => setShowInput(!showInput)}>
+              <FileText size={16} /> {showInput ? "Hide input" : "Edit resume text"}
+            </button>
+          )}
+          <button className="primary-button" disabled={isAnalyzing || resumeText.trim().length < 80} onClick={() => void runAnalysis()}>
+            {isAnalyzing ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+            {isAnalyzing ? "Analyzing..." : analysis ? "Re-analyze resume" : "Analyze resume"}
+          </button>
+        </div>
       </div>
-      {!analysis ? (
-        <section className="resume-empty">
+
+      {error && (
+        <div className="error-banner" role="alert">
+          <span>{error}</span>
+          <button onClick={() => void runAnalysis()}>
+            Retry <ArrowUpRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {showInput && (
+        <section className="resume-empty" style={{ marginBottom: analysis ? "25px" : "0" }}>
           <FileText size={24} />
-          <h3>Your resume is the missing signal.</h3>
-          <p>CareerPilot will only show feedback after you provide source material. Minimum 80 characters.</p>
+          <h3>{analysis ? "Update resume text" : "Your resume is the missing signal."}</h3>
+          <p>CareerPilot will evaluate your experience against your target role ({profile.targetCareer}). Minimum 80 characters.</p>
           <textarea
             aria-label="Resume text"
             value={resumeText}
             onChange={(event) => setResumeText(event.currentTarget.value)}
             placeholder="Paste your resume here..."
-            rows={12}
+            rows={10}
             className="resume-textarea"
           />
-          <small className="character-count">
-            {resumeText.length} characters {resumeText.trim().length < 80 && `· ${80 - resumeText.trim().length} more needed`}
-          </small>
-          {error && <p className="field-error" role="alert">{error}</p>}
+          <div className="resume-empty-footer">
+            <small className="character-count">
+              {resumeText.length} characters {resumeText.trim().length < 80 && `· ${80 - resumeText.trim().length} more needed`}
+            </small>
+            {!analysis && (
+              <button
+                className="primary-button"
+                disabled={isAnalyzing || resumeText.trim().length < 80}
+                onClick={() => void runAnalysis()}
+              >
+                {isAnalyzing ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+                {isAnalyzing ? "Analyzing resume..." : "Analyze resume"}
+              </button>
+            )}
+          </div>
         </section>
-      ) : (
-        <ResumeResults analysis={analysis} onRetry={() => void runAnalysis()} isAnalyzing={isAnalyzing} />
+      )}
+
+      {analysis && (
+        <ResumeResults
+          analysis={analysis}
+          notice={notice}
+          onRetry={() => void runAnalysis()}
+          isAnalyzing={isAnalyzing}
+        />
       )}
     </div>
   );
 }
 
-function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAnalysis; onRetry: () => void; isAnalyzing: boolean }) {
+function ResumeResults({
+  analysis,
+  notice,
+  onRetry,
+  isAnalyzing,
+}: {
+  analysis: ResumeAnalysis;
+  notice?: string;
+  onRetry: () => void;
+  isAnalyzing: boolean;
+}) {
   return (
     <div className="resume-results">
       <div className="analysis-banner" role="status">
         <Sparkles size={15} />
-        <span>{analysis.source === "demo" ? "Demo resume feedback · no provider key configured" : "Provider-generated resume analysis"}</span>
+        <span>
+          {analysis.source === "demo"
+            ? "Demo resume feedback · fallback mode"
+            : "AI-generated resume analysis"}
+          {notice ? ` — ${notice}` : ""}
+        </span>
         <button onClick={onRetry} disabled={isAnalyzing}>
-          {isAnalyzing ? "Analyzing..." : "Run again"}
+          {isAnalyzing ? "Analyzing..." : "Re-run analysis"}
         </button>
       </div>
 
       <div className="score-cards">
         <article className="score-card">
-          <span className="score-label">OVERALL</span>
+          <span className="score-label">OVERALL SCORE</span>
           <div className="score-value">{analysis.overallScore}</div>
           <span className="score-max">/100</span>
         </article>
         <article className="score-card">
-          <span className="score-label">ATS SCORE</span>
+          <span className="score-label">ATS MATCH</span>
           <div className="score-value">{analysis.atsScore}</div>
+          <span className="score-max">/100</span>
+        </article>
+        <article className="score-card">
+          <span className="score-label">READABILITY</span>
+          <div className="score-value">{analysis.readabilityScore}</div>
           <span className="score-max">/100</span>
         </article>
         <article className="score-card">
@@ -218,7 +278,7 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
       </div>
 
       <div className="resume-summary">
-        <h3>Your resume analysis</h3>
+        <h3>Resume Executive Summary</h3>
         <p>{analysis.summary}</p>
       </div>
 
@@ -242,6 +302,15 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
       </div>
 
       <div className="resume-keywords">
+        <span className="section-header">SUGGESTED TARGET ROLES</span>
+        <div className="tag-row">
+          {analysis.suggestedTargetRoles.map((role) => (
+            <span key={role}>{role}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="resume-keywords">
         <span className="section-header">MISSING KEYWORDS</span>
         <div className="tag-row">
           {analysis.keywordSuggestions.map((keyword) => (
@@ -251,7 +320,7 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
       </div>
 
       <div className="resume-missing-skills">
-        <span className="section-header">SKILLS TO EMPHASIZE</span>
+        <span className="section-header">MISSING SKILLS & COMPETENCIES</span>
         {analysis.missingSkills.map((skill) => (
           <p key={skill}>
             <Lightbulb size={13} /> {skill}
@@ -260,7 +329,7 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
       </div>
 
       <article className="experience-suggestions">
-        <span className="section-header">BULLET POINT EXAMPLES</span>
+        <span className="section-header">BULLET POINT IMPROVEMENT SUGGESTIONS</span>
         {analysis.experienceSuggestions.map((suggestion, index) => (
           <p key={index}>
             <Check size={13} /> {suggestion}
@@ -268,8 +337,17 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
         ))}
       </article>
 
+      <article className="experience-suggestions">
+        <span className="section-header">RECOMMENDED CHANGES</span>
+        {analysis.recommendedChanges.map((change, index) => (
+          <p key={index}>
+            <Target size={13} /> {change}
+          </p>
+        ))}
+      </article>
+
       <article className="action-items">
-        <span className="section-header">NEXT ACTIONS</span>
+        <span className="section-header">PRIORITIZED ACTION LIST</span>
         <ol>
           {analysis.actionItems.map((item, index) => (
             <li key={index}>{item}</li>
@@ -282,6 +360,48 @@ function ResumeResults({ analysis, onRetry, isAnalyzing }: { analysis: ResumeAna
 
 function Dialog({ children, title, label, onClose }: { children: React.ReactNode; title: string; label: string; onClose: () => void }) { return <div className="modal-backdrop" onClick={onClose}><section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow">{label}</p><h2 id="dialog-title">{title}</h2></div><button className="close-button" onClick={onClose} aria-label="Close dialog"><X size={19} /></button></div>{children}</section></div>; }
 
-function ProfileDialog({ profile, onClose, onSave }: { profile: Profile; onClose: () => void; onSave: (profile: Profile) => void }) { const [draft, setDraft] = useState(profile); const [validation, setValidation] = useState(""); const fields: [keyof Profile, string][] = [["name", "Name"], ["status", "Current status"], ["targetCareer", "Target career"], ["experience", "Experience"], ["education", "Education"], ["skills", "Skills & strengths"], ["interests", "Interests"], ["learningGoals", "Learning goals"]]; function submit() { if (!draft.name.trim() || !draft.targetCareer.trim()) { setValidation("Name and target career are required."); return; } onSave(draft); } return <Dialog label="PROFILE SIGNALS" title="Make your plan more you." onClose={onClose}><p className="modal-copy">CareerPilot uses these details to tune your recommendations. Your profile is saved only in this browser for the demo.</p><div className="profile-fields">{fields.map(([key, label]) => <label className="field" key={key}>{label}{(key === "name" || key === "targetCareer") && <span className="required">required</span>}<input required={key === "name" || key === "targetCareer"} value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></label>)}</div>{validation && <p className="field-error" role="alert">{validation}</p>}<button className="primary-button full-button" onClick={submit}><Check size={17} /> Save profile</button></Dialog>; }
+function ProfileDialog({ profile, onClose, onSave }: { profile: Profile; onClose: () => void; onSave: (profile: Profile) => void }) {
+  const [draft, setDraft] = useState(profile);
+  const [validation, setValidation] = useState("");
+  const fields: [keyof Profile, string][] = [
+    ["name", "Name"],
+    ["status", "Current status"],
+    ["targetCareer", "Target career"],
+    ["experience", "Experience"],
+    ["education", "Education"],
+    ["skills", "Skills & strengths"],
+    ["interests", "Interests"],
+    ["learningGoals", "Learning goals"],
+    ["learningPreferences", "Learning preferences"],
+  ];
+  function submit() {
+    if (!draft.name.trim() || !draft.targetCareer.trim()) {
+      setValidation("Name and target career are required.");
+      return;
+    }
+    onSave(draft);
+  }
+  return (
+    <Dialog label="PROFILE SIGNALS" title="Make your plan more you." onClose={onClose}>
+      <p className="modal-copy">CareerPilot uses these details to tune your recommendations. Your profile is saved only in this browser for the demo.</p>
+      <div className="profile-fields">
+        {fields.map(([key, label]) => (
+          <label className="field" key={key}>
+            {label}{(key === "name" || key === "targetCareer") && <span className="required">required</span>}
+            <input
+              required={key === "name" || key === "targetCareer"}
+              value={draft[key] ?? ""}
+              onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+            />
+          </label>
+        ))}
+      </div>
+      {validation && <p className="field-error" role="alert">{validation}</p>}
+      <button className="primary-button full-button" onClick={submit}>
+        <Check size={17} /> Save profile
+      </button>
+    </Dialog>
+  );
+}
 
 function PathDialog({ path, onClose }: { path: CareerPath; onClose: () => void }) { return <Dialog label="CAREER PATH DETAIL" title={path.title} onClose={onClose}><div className="detail-score"><strong>{path.match}%</strong><span>match based on your profile</span></div><p className="modal-copy">{path.explanation}</p><div className="detail-columns"><div><span>WHY IT MATCHES</span>{path.strengths.map((item) => <p key={item}><Check size={13} /> {item}</p>)}</div><div><span>SKILLS TO BUILD</span>{path.missingSkills.map((item) => <p key={item}><Target size={13} /> {item}</p>)}</div></div><div className="next-step"><span>NEXT BEST STEP</span><strong>{path.nextStep}</strong></div></Dialog>; }

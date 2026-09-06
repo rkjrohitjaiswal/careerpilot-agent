@@ -4,8 +4,8 @@ export type PlanResult = { plan: CareerPlan; demoMode: boolean; notice?: string 
 export type ResumeResult = { analysis: ResumeAnalysis; demoMode: boolean; notice?: string };
 type AIProvider<TInput, TOutput> = (input: TInput) => Promise<TOutput>;
 
-export const CAREER_ANALYSIS_PROMPT = "You are CareerPilot, a practical career analyst. Return only valid JSON matching CareerPlan. Use source 'provider', realistic scores, exactly three roadmap phases, and connect each skill gap to a milestone, project, and career outcome. Never invent personal information.";
-export const RESUME_ANALYSIS_PROMPT = "You are CareerPilot Resume Coach. Analyze the supplied resume text for the target career. Return only valid JSON matching the ResumeAnalysis contract: { source: 'provider', overallScore (0-100), atsScore (0-100), interviewReadiness (0-100), summary (concise paragraph), strengths (3-4 strings), weaknesses (3-4 strings), missingSkills (3-4 strings), keywordSuggestions (5-7 strings), experienceSuggestions (2-3 improved bullet examples), actionItems (3-4 specific improvements) }. Never claim to have analyzed missing text. Always ground feedback in the actual resume content.";
+export const CAREER_ANALYSIS_PROMPT = "You are CareerPilot, an expert career strategist. Analyze the user's complete profile: name, current role (status), experience, education, skills, interests, target career (targetCareer), learning goals (learningGoals), and learning preferences (learningPreferences). Return only valid JSON matching CareerPlan. Use source 'provider', realistic scores, exactly three roadmap phases tailored to their goals and learning preferences, and connect each skill gap to a milestone, project, and career outcome. Ground all recommendations specifically in their actual profile details and background. Never invent fake personal information.";
+export const RESUME_ANALYSIS_PROMPT = "You are CareerPilot Resume Coach. Analyze the supplied resume text for the target career and user profile. Return only valid JSON matching the ResumeAnalysis contract: { source: 'provider', overallScore (0-100), atsScore (0-100), readabilityScore (0-100), interviewReadiness (0-100), summary (concise paragraph), strengths (3-4 strings), weaknesses (3-4 strings), missingSkills (3-4 strings), keywordSuggestions (5-7 strings), experienceSuggestions (2-3 improved bullet examples), recommendedChanges (3-4 specific recommended changes), suggestedTargetRoles (2-4 relevant target job titles), actionItems (3-5 prioritized action steps) }. Never claim to have analyzed missing text. Always ground feedback in the actual resume content.";
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null; }
 function isString(value: unknown): value is string { return typeof value === "string"; }
@@ -28,9 +28,10 @@ export function isCareerPlan(value: unknown): value is CareerPlan {
 
 export function isResumeAnalysis(value: unknown): value is ResumeAnalysis {
   if (!isRecord(value) || !["demo", "provider"].includes(String(value.source))) return false;
-  if (!isNumber(value.overallScore) || !isNumber(value.atsScore) || !isNumber(value.interviewReadiness)) return false;
+  if (!isNumber(value.overallScore) || !isNumber(value.atsScore) || !isNumber(value.readabilityScore) || !isNumber(value.interviewReadiness)) return false;
   if (!isString(value.summary) || !isStringArray(value.strengths) || !isStringArray(value.weaknesses)) return false;
-  if (!isStringArray(value.missingSkills) || !isStringArray(value.keywordSuggestions) || !isStringArray(value.experienceSuggestions) || !isStringArray(value.actionItems)) return false;
+  if (!isStringArray(value.missingSkills) || !isStringArray(value.keywordSuggestions) || !isStringArray(value.experienceSuggestions)) return false;
+  if (!isStringArray(value.recommendedChanges) || !isStringArray(value.suggestedTargetRoles) || !isStringArray(value.actionItems)) return false;
   return true;
 }
 

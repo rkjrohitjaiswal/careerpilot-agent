@@ -9,6 +9,7 @@ export type Profile = {
   skills: string;
   interests: string;
   learningGoals: string;
+  learningPreferences?: string;
   resumeText?: string;
 };
 
@@ -76,6 +77,7 @@ export type ResumeAnalysis = {
   source: "demo" | "provider";
   overallScore: number;
   atsScore: number;
+  readabilityScore: number;
   interviewReadiness: number;
   summary: string;
   strengths: string[];
@@ -83,6 +85,8 @@ export type ResumeAnalysis = {
   missingSkills: string[];
   keywordSuggestions: string[];
   experienceSuggestions: string[];
+  recommendedChanges: string[];
+  suggestedTargetRoles: string[];
   actionItems: string[];
 };
 
@@ -114,13 +118,14 @@ export type AIAnalysis = CareerPlan;
 
 export const demoProfile: Profile = {
   name: "Maya Chen",
-  status: "Career explorer",
+  status: "Brand Marketer",
   targetCareer: "Product Manager",
   experience: "3 years in brand marketing",
   education: "BA Communications · University of Oregon",
   skills: "Product thinking, user research, marketing",
   interests: "Mission-driven products, education, climate",
   learningGoals: "Become confident with product analytics and case studies",
+  learningPreferences: "Self-paced hands-on projects, 4 hrs/week",
   resumeText: "",
 };
 
@@ -129,6 +134,7 @@ export function isProfile(value: unknown): value is Profile {
   const profile = value as Record<string, unknown>;
   return ["name", "status", "targetCareer", "experience", "education", "skills", "interests", "learningGoals"]
     .every((key) => typeof profile[key] === "string")
+    && (profile.learningPreferences === undefined || typeof profile.learningPreferences === "string")
     && (profile.resumeText === undefined || typeof profile.resumeText === "string");
 }
 
@@ -181,6 +187,7 @@ export const demoResumeAnalysis: ResumeAnalysis = {
   source: "demo",
   overallScore: 72,
   atsScore: 68,
+  readabilityScore: 82,
   interviewReadiness: 75,
   summary: "Your resume tells a clear career story with strong communication skills and customer focus. Adding measurable outcomes and product keywords will significantly improve both ATS matching and interview conversations.",
   strengths: ["Clear communication", "Strong customer context", "Consistent career story"],
@@ -191,6 +198,16 @@ export const demoResumeAnalysis: ResumeAnalysis = {
     "Grew qualified inbound leads 34% through a new content system",
     "Aligned brand, sales, and product partners around a quarterly launch narrative",
     "Reduced customer acquisition cost 28% by testing three messaging angles"
+  ],
+  recommendedChanges: [
+    "Reformat work history bullet points to emphasize quantifiable impact",
+    "Add technical skills section with analytics and product management tools",
+    "Include direct links to portfolio memos and data projects"
+  ],
+  suggestedTargetRoles: [
+    "Product Manager",
+    "Associate Product Manager",
+    "Product Marketing Manager"
   ],
   actionItems: [
     "Add a portfolio link and GitHub profile to contact section",

@@ -22,7 +22,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(232,109,87,.
 .resume-textarea { display: block; width: 100%; border: 1px solid var(--line); border-radius: 5px; background: var(--white); padding: 13px; color: var(--ink); font: 11px/1.6 'Manrope'; outline: none; }
 .resume-textarea:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(232,109,87,.1); }
 .character-count { display: block; margin-top: 8px; color: #9b9c95; font: 9px 'DM Mono'; }
-.score-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 25px 0; }
+.score-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 25px 0; }
 .score-card { background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 20px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .score-label { font: 8px 'DM Mono'; letter-spacing: .7px; color: #999a93; margin-bottom: 12px; }
 .score-value { font-size: 42px; font-weight: 800; color: var(--ink); line-height: 1; }
