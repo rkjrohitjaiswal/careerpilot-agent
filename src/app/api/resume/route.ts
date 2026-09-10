@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     if (input.profile !== undefined && !isProfile(input.profile)) return NextResponse.json({ error: "Profile details are malformed. Please refresh and try again." }, { status: 400 });
     return NextResponse.json(await analyzeResume({ resumeText: input.resumeText, targetCareer: input.targetCareer, profile: input.profile }));
   } catch (error) {
+    console.error("API /api/resume error:", error);
     if (error instanceof SyntaxError) return NextResponse.json({ error: "Resume data was not valid JSON." }, { status: 400 });
     return NextResponse.json({ error: "We couldn't analyze your resume. Please try again." }, { status: 500 });
   }

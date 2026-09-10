@@ -10,7 +10,8 @@ export async function POST(request: Request) {
     }
     const result = await generateCareerPlan(profile);
     return NextResponse.json(result);
-  } catch {
+  } catch (caughtError) {
+    console.error("API /api/plan error:", caughtError);
     return NextResponse.json({ error: "We couldn't refresh your plan. Please try again." }, { status: 500 });
   }
 }
