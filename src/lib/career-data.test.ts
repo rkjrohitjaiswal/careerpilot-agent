@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Agent, AgentResult, Message, TextBlock } from "@strands-agents/sdk";
 import { calculateRoadmapProgress, demoPlan, demoProfile, demoResumeAnalysis, isProfile } from "./career-data";
 import { analyzeResume, generateCareerPlan, isCareerPlan, isResumeAnalysis } from "./ai-service";
+import { careerAgentOutputSchema, careerPlanSchema, resumeAgentOutputSchema, resumeAnalysisSchema } from "./schemas";
+import { runCareerAgent } from "./career-agent";
+import { runResumeAgent } from "./resume-agent";
+import { CAREER_ANALYSIS_PROMPT, RESUME_ANALYSIS_PROMPT } from "./agent-prompts";
 
 describe("career data contracts", () => {
   it("accepts a complete profile and rejects incomplete input", () => {
@@ -48,86 +53,106 @@ describe("career data contracts", () => {
     expect(result.plan.source).toBe("demo");
   });
 
-  describe("AI provider error handling and fallback behavior", () => {
+  describe("architecture & circular dependency checks", () => {
+    it("exports prompts from agent-prompts without circular initialization issues", () => {
+      expect(typeof CAREER_ANALYSIS_PROMPT).toBe("string");
+      expect(CAREER_ANALYSIS_PROMPT.length).toBeGreaterThan(100);
+      expect(typeof RESUME_ANALYSIS_PROMPT).toBe("string");
+      expect(RESUME_ANALYSIS_PROMPT.length).toBeGreaterThan(50);
+    });
+  });
+
+  describe("Zod schema validation & decoupled model outputs", () => {
+    it("model output schema validates CareerPlan data without source/generatedAt", () => {
+      const modelRawOutput = { ...demoPlan } as Record<string, unknown>;
+      delete modelRawOutput.source;
+      delete modelRawOutput.generatedAt;
+      const parsed = careerAgentOutputSchema.safeParse(modelRawOutput);
+      expect(parsed.success).toBe(true);
+    });
+
+    it("full application careerPlanSchema validates complete CareerPlan with metadata", () => {
+      const parsed = careerPlanSchema.safeParse(demoPlan);
+      expect(parsed.success).toBe(true);
+    });
+
+    it("model output schema validates ResumeAnalysis data without source", () => {
+      const modelRawOutput = { ...demoResumeAnalysis } as Record<string, unknown>;
+      delete modelRawOutput.source;
+      const parsed = resumeAgentOutputSchema.safeParse(modelRawOutput);
+      expect(parsed.success).toBe(true);
+    });
+
+    it("full application resumeAnalysisSchema validates complete ResumeAnalysis with metadata", () => {
+      const parsed = resumeAnalysisSchema.safeParse(demoResumeAnalysis);
+      expect(parsed.success).toBe(true);
+    });
+
+    it("rejects CareerPlan with roadmap phase count != 3", () => {
+      const invalidPlan = {
+        ...demoPlan,
+        roadmap: [demoPlan.roadmap[0], demoPlan.roadmap[1]],
+      };
+      expect(careerAgentOutputSchema.safeParse(invalidPlan).success).toBe(false);
+      expect(careerPlanSchema.safeParse(invalidPlan).success).toBe(false);
+    });
+
+    it("rejects CareerPlan with score < 0 or > 100", () => {
+      expect(careerAgentOutputSchema.safeParse({ ...demoPlan, profileStrength: -5 }).success).toBe(false);
+      expect(careerAgentOutputSchema.safeParse({ ...demoPlan, profileStrength: 105 }).success).toBe(false);
+    });
+
+    it("rejects ResumeAnalysis with score < 0 or > 100", () => {
+      expect(resumeAgentOutputSchema.safeParse({ ...demoResumeAnalysis, overallScore: -1 }).success).toBe(false);
+      expect(resumeAgentOutputSchema.safeParse({ ...demoResumeAnalysis, overallScore: 101 }).success).toBe(false);
+    });
+  });
+
+  describe("Strands Agents SDK integration and fallback behavior", () => {
     const originalEnv = process.env.OPENAI_API_KEY;
 
     afterEach(() => {
       process.env.OPENAI_API_KEY = originalEnv;
-      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
     });
 
-    it("falls back to demo plan with notice on provider 500 error", async () => {
+    it("returns valid provider CareerPlan when Strands Agent returns valid structured output without server metadata", async () => {
       process.env.OPENAI_API_KEY = "test-fake-key";
-      vi.stubGlobal("fetch", async () => new Response("Internal Server Error", { status: 500 }));
+      const modelRawOutput = { ...demoPlan } as Record<string, unknown>;
+      delete modelRawOutput.source;
+      delete modelRawOutput.generatedAt;
 
-      const result = await generateCareerPlan(demoProfile);
-      expect(result.demoMode).toBe(true);
-      expect(result.plan.source).toBe("demo");
-      expect(result.notice).toContain("The AI provider returned an unusable response.");
-    });
-
-    it("falls back to demo plan with notice on malformed JSON content", async () => {
-      process.env.OPENAI_API_KEY = "test-fake-key";
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: "invalid json string {" } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      );
-
-      const result = await generateCareerPlan(demoProfile);
-      expect(result.demoMode).toBe(true);
-      expect(result.plan.source).toBe("demo");
-      expect(result.notice).toContain("unusable response");
-    });
-
-    it("falls back to demo resume analysis on invalid schema shape", async () => {
-      process.env.OPENAI_API_KEY = "test-fake-key";
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify({ overallScore: "bad" }) } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      );
-
-      const resumeText = "Experienced Marketing Lead with 5 years experience driving multi-channel growth campaigns, user retention metrics, SQL queries, and product discovery workshops.";
-      const result = await analyzeResume({ resumeText, targetCareer: "Product Manager", profile: demoProfile });
-      expect(result.demoMode).toBe(true);
-      expect(result.analysis.source).toBe("demo");
-      expect(result.notice).toContain("unusable resume analysis");
-    });
-
-    it("returns valid provider CareerPlan when provider responds with valid schema", async () => {
-      process.env.OPENAI_API_KEY = "test-fake-key";
-      const validPlan = {
-        ...demoPlan,
-        source: "provider",
-      };
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify(validPlan) } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: modelRawOutput,
+        })
       );
 
       const result = await generateCareerPlan(demoProfile);
       expect(result.demoMode).toBe(false);
       expect(result.plan.source).toBe("provider");
+      expect(result.plan.generatedAt).toBe("just now");
       expect(result.plan.profileStrength).toBe(demoPlan.profileStrength);
     });
 
-    it("ensures trusted source and generatedAt fields override model output", async () => {
+    it("ensures server code forces trusted source and generatedAt metadata regardless of model output", async () => {
       process.env.OPENAI_API_KEY = "test-fake-key";
-      const modelPlan = {
+      const modelPlanWithUntrustedMetadata = {
         ...demoPlan,
-        source: "untrusted-source-override",
-        generatedAt: "2020-01-01",
+        source: "fake-untrusted-source",
+        generatedAt: "2000-01-01",
       };
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelPlan) } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: modelPlanWithUntrustedMetadata,
+        })
       );
 
       const planResult = await generateCareerPlan(demoProfile);
@@ -135,15 +160,18 @@ describe("career data contracts", () => {
       expect(planResult.plan.source).toBe("provider");
       expect(planResult.plan.generatedAt).toBe("just now");
 
-      const modelAnalysis = {
+      const modelAnalysisWithUntrustedMetadata = {
         ...demoResumeAnalysis,
-        source: "untrusted-source-override",
+        source: "fake-untrusted-source",
       };
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelAnalysis) } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: modelAnalysisWithUntrustedMetadata,
+        })
       );
 
       const resumeText = "Experienced Marketing Lead with 5 years experience driving multi-channel growth campaigns, user retention metrics, SQL queries, and product discovery workshops.";
@@ -152,23 +180,88 @@ describe("career data contracts", () => {
       expect(resumeResult.analysis.source).toBe("provider");
     });
 
-    it("returns valid provider ResumeAnalysis when provider responds with valid schema", async () => {
+    it("falls back to demo plan with notice on Strands Agent error", async () => {
       process.env.OPENAI_API_KEY = "test-fake-key";
-      const validAnalysis = {
-        ...demoResumeAnalysis,
-        source: "provider",
+      vi.spyOn(Agent.prototype, "invoke").mockRejectedValue(new Error("Strands agent error"));
+
+      const result = await generateCareerPlan(demoProfile);
+      expect(result.demoMode).toBe(true);
+      expect(result.plan.source).toBe("demo");
+      expect(result.notice).toContain("The AI provider returned an unusable response.");
+    });
+
+    it("falls back to demo plan when score is outside 0-100", async () => {
+      process.env.OPENAI_API_KEY = "test-fake-key";
+      const invalidPlan = {
+        ...demoPlan,
+        profileStrength: 150,
       };
-      vi.stubGlobal("fetch", async () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify(validAnalysis) } }] }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
+
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: invalidPlan,
+        })
+      );
+
+      const result = await generateCareerPlan(demoProfile);
+      expect(result.demoMode).toBe(true);
+      expect(result.plan.source).toBe("demo");
+      expect(result.notice).toContain("unusable response");
+    });
+
+    it("falls back to demo plan when roadmap phase count is not exactly 3", async () => {
+      process.env.OPENAI_API_KEY = "test-fake-key";
+      const invalidPlan = {
+        ...demoPlan,
+        roadmap: [demoPlan.roadmap[0], demoPlan.roadmap[1]],
+      };
+
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: invalidPlan,
+        })
+      );
+
+      const result = await generateCareerPlan(demoProfile);
+      expect(result.demoMode).toBe(true);
+      expect(result.plan.source).toBe("demo");
+      expect(result.notice).toContain("unusable response");
+    });
+
+    it("returns valid provider ResumeAnalysis when Strands Resume Coach Agent returns valid output", async () => {
+      process.env.OPENAI_API_KEY = "test-fake-key";
+      const modelRawOutput = { ...demoResumeAnalysis } as Record<string, unknown>;
+      delete modelRawOutput.source;
+
+      vi.spyOn(Agent.prototype, "invoke").mockResolvedValue(
+        new AgentResult({
+          stopReason: "end_turn",
+          lastMessage: new Message({ role: "assistant", content: [new TextBlock("ok")] }),
+          invocationState: {},
+          structuredOutput: modelRawOutput,
+        })
       );
 
       const resumeText = "Experienced Marketing Lead with 5 years experience driving multi-channel growth campaigns, user retention metrics, SQL queries, and product discovery workshops.";
       const result = await analyzeResume({ resumeText, targetCareer: "Product Manager", profile: demoProfile });
       expect(result.demoMode).toBe(false);
       expect(result.analysis.source).toBe("provider");
+    });
+
+    it("runCareerAgent throws when missing OPENAI_API_KEY", async () => {
+      delete process.env.OPENAI_API_KEY;
+      await expect(runCareerAgent(demoProfile, { apiKey: "" })).rejects.toThrow("Missing OPENAI_API_KEY");
+    });
+
+    it("runResumeAgent throws when missing OPENAI_API_KEY", async () => {
+      delete process.env.OPENAI_API_KEY;
+      await expect(runResumeAgent({ resumeText: "long enough resume text with 80+ chars", targetCareer: "PM" }, { apiKey: "" })).rejects.toThrow("Missing OPENAI_API_KEY");
     });
   });
 
@@ -196,5 +289,3 @@ describe("career data contracts", () => {
     });
   });
 });
-
-

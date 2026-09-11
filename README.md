@@ -1,6 +1,6 @@
 # CareerPilot
 
-CareerPilot is an AI-powered career assistant built for a hackathon demo. It turns a person&apos;s skills, education, experience, interests, and goals into a practical next-step workspace.
+CareerPilot is an AI-powered career assistant built for a hackathon demo. It turns a person's skills, education, experience, interests, and goals into a practical next-step workspace.
 
 ## Included in the demo
 
@@ -14,12 +14,46 @@ CareerPilot is an AI-powered career assistant built for a hackathon demo. It tur
 
 ## Architecture
 
-- `src/components/CareerPilotApp.tsx` contains the client interaction shell and presentation components.
-- `src/lib/career-data.ts` contains shared TypeScript models, profile validation, and deterministic seeded data.
-- `src/lib/ai-service.ts` contains the server-only provider abstraction, OpenAI adapter, structured response validation, timeout, and demo fallback.
-- `src/app/api/plan/route.ts` is the server endpoint used by the refresh flow. API keys never reach the browser.
-- `src/app/api/resume/route.ts` validates resume input and returns structured resume coaching from the same server-only provider boundary.
-- `src/app/globals.css` contains the warm paper, ink, coral, mint, and gold design system.
+CareerPilot uses Next.js, TypeScript, and the **Strands Agents SDK** (`@strands-agents/sdk`) as its core agent orchestration layer.
+
+### Agent Workflow & Layering
+
+```
+/api/plan (Next.js Route)
+  ↓
+src/lib/ai-service.ts (Service Boundary)
+  ↓
+src/lib/career-agent.ts (CareerPilotAgent)
+  ↓
+Strands Agent + OpenAIModel (@strands-agents/sdk/models/openai)
+  ↓
+Zod Structured Output Schema (careerPlanSchema)
+  ↓
+Server-Enforced Trusted Metadata (source: "provider", generatedAt: "just now")
+  ↓
+isCareerPlan() Defensive Runtime Validation
+  ↓
+CareerPilot UI Component
+```
+
+- **Next.js & TypeScript**: Core application framework ensuring full type safety from API route to UI components.
+- **Strands Agents SDK**: `Agent` instances (`CareerPilotAgent` and `ResumeCoachAgent`) orchestrate model invocations, handle structured outputs, and manage agent execution lifecycles.
+- **Server-Side Model Provider**: `OpenAIModel` from `@strands-agents/sdk/models/openai` communicates with configured model providers securely on the server. Credentials (`OPENAI_API_KEY`) never leak to the client.
+- **Zod Structured Output**: Strands Agents SDK uses Zod schemas (`careerPlanSchema` & `resumeAnalysisSchema`) to guarantee structured JSON responses matching domain contracts.
+- **Runtime Validation & Metadata Enforcement**: Server code forces trusted metadata (`source: "provider"`, `generatedAt: "just now"`) and validates output through secondary `isCareerPlan()` / `isResumeAnalysis()` checks before returning to the UI.
+- **Deterministic Demo Fallback**: If `OPENAI_API_KEY` is missing, or if the agent execution times out or encounters invalid model output, CareerPilot gracefully falls back to deterministic demo data (`demoPlan` / `demoResumeAnalysis`) with a user notice.
+
+## Component Layout
+
+- `src/components/CareerPilotApp.tsx`: Client interaction shell and presentation components.
+- `src/lib/career-data.ts`: Shared TypeScript models, profile validation, and deterministic seeded data.
+- `src/lib/schemas.ts`: Zod validation schemas for CareerPlan and ResumeAnalysis contracts.
+- `src/lib/career-agent.ts`: Strands Agent definition for CareerPlan generation (`CareerPilotAgent`).
+- `src/lib/resume-agent.ts`: Strands Agent definition for Resume analysis (`ResumeCoachAgent`).
+- `src/lib/ai-service.ts`: Server-only service boundary, agent invocation wrapper, runtime validation, timeout, and demo fallback.
+- `src/app/api/plan/route.ts`: Next.js server endpoint for generating career plans.
+- `src/app/api/resume/route.ts`: Next.js server endpoint for resume analysis.
+- `src/app/globals.css`: Warm paper, ink, coral, mint, and gold design system.
 
 ## Run locally
 
@@ -61,11 +95,7 @@ The app works without credentials. `POST /api/plan` returns seeded career matche
 ```bash
 npm run dev       # local development
 npm run lint      # ESLint
-npm test          # focused contract and progress tests
+npm test          # focused contract, Zod, and Strands Agent tests
 npm run build     # production compile and type check
 npm run start     # serve the production build
 ```
-
-## Limitations
-
-The live provider adapter currently targets OpenAI-compatible chat completions and expects the model to return the CareerPlan or ResumeAnalysis JSON contract. Provider output is validated before it reaches the UI. There is no database, authentication, or cross-device persistence yet.
